@@ -190,7 +190,9 @@ function wpcf7_captcha_messages( $messages ) {
 
 /* Tag generator */
 
-add_action( 'admin_init', 'wpcf7_add_tag_generator_captcha', 45 );
+if ( is_admin() ) {
+	add_action( 'admin_init', 'wpcf7_add_tag_generator_captcha', 45 );
+}
 
 function wpcf7_add_tag_generator_captcha() {
 	$tag_generator = WPCF7_TagGenerator::get_instance();
@@ -286,11 +288,13 @@ function wpcf7_captcha_display_warning_message() {
 	$has_tags = (bool) $contact_form->form_scan_shortcode(
 		array( 'type' => array( 'captchac' ) ) );
 
-	if ( ! $has_tags )
+	if ( ! $has_tags ) {
 		return;
+	}
 
-	if ( ! class_exists( 'ReallySimpleCaptcha' ) )
+	if ( ! class_exists( 'ReallySimpleCaptcha' ) ) {
 		return;
+	}
 
 	$uploads_dir = wpcf7_captcha_tmp_dir();
 	wpcf7_init_captcha();
@@ -298,13 +302,13 @@ function wpcf7_captcha_display_warning_message() {
 	if ( ! is_dir( $uploads_dir ) || ! wp_is_writable( $uploads_dir ) ) {
 		$message = sprintf( __( 'This contact form contains CAPTCHA fields, but the temporary folder for the files (%s) does not exist or is not writable. You can create the folder or change its permission manually.', 'contact-form-7' ), $uploads_dir );
 
-		echo '<div class="error"><p>' . esc_html( $message ) . '</p></div>';
+		echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
 	}
 
 	if ( ! function_exists( 'imagecreatetruecolor' ) || ! function_exists( 'imagettftext' ) ) {
 		$message = __( 'This contact form contains CAPTCHA fields, but the necessary libraries (GD and FreeType) are not available on your server.', 'contact-form-7' );
 
-		echo '<div class="error"><p>' . esc_html( $message ) . '</p></div>';
+		echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
 	}
 }
 

@@ -1,6 +1,7 @@
 <?php
 
 require_once WPCF7_PLUGIN_DIR . '/admin/includes/admin-functions.php';
+require_once WPCF7_PLUGIN_DIR . '/admin/includes/help-tabs.php';
 require_once WPCF7_PLUGIN_DIR . '/admin/includes/tag-generator.php';
 
 add_action( 'admin_menu', 'wpcf7_admin_menu', 9 );
@@ -27,13 +28,17 @@ function wpcf7_admin_menu() {
 
 	add_action( 'load-' . $addnew, 'wpcf7_load_contact_form_admin' );
 
-	$integration = add_submenu_page( 'wpcf7',
-		__( 'Integration with Other Services', 'contact-form-7' ),
-		__( 'Integration', 'contact-form-7' ),
-		'wpcf7_edit_contact_forms', 'wpcf7-integration',
-		'wpcf7_admin_integration_page' );
+	$integration = WPCF7_Integration::get_instance();
 
-	add_action( 'load-' . $integration, 'wpcf7_load_integration_page' );
+	if ( $integration->service_exists() ) {
+		$integration = add_submenu_page( 'wpcf7',
+			__( 'Integration with Other Services', 'contact-form-7' ),
+			__( 'Integration', 'contact-form-7' ),
+			'wpcf7_manage_integration', 'wpcf7-integration',
+			'wpcf7_admin_integration_page' );
+
+		add_action( 'load-' . $integration, 'wpcf7_load_integration_page' );
+	}
 }
 
 add_filter( 'set-screen-option', 'wpcf7_set_screen_options', 10, 3 );
@@ -151,7 +156,6 @@ function wpcf7_load_contact_form_admin() {
 
 	$current_screen = get_current_screen();
 
-	require_once WPCF7_PLUGIN_DIR . '/admin/includes/help-tabs.php';
 	$help_tabs = new WPCF7_Help_Tabs( $current_screen );
 
 	if ( $post && current_user_can( 'wpcf7_edit_contact_form', $post->id() ) ) {
@@ -171,7 +175,6 @@ function wpcf7_load_contact_form_admin() {
 			array( 'WPCF7_Contact_Form_List_Table', 'define_columns' ) );
 
 		add_screen_option( 'per_page', array(
-			'label' => __( 'Contact Forms', 'contact-form-7' ),
 			'default' => 20,
 			'option' => 'cfseven_contact_forms_per_page' ) );
 	}
@@ -194,23 +197,21 @@ function wpcf7_admin_enqueue_scripts( $hook_suffix ) {
 			array(), WPCF7_VERSION, 'all' );
 	}
 
-	add_thickbox();
-
-	wp_enqueue_script( 'wpcf7-admin-taggenerator',
-		wpcf7_plugin_url( 'admin/js/tag-generator.js' ),
-		array( 'jquery' ), WPCF7_VERSION, true );
-
 	wp_enqueue_script( 'wpcf7-admin',
 		wpcf7_plugin_url( 'admin/js/scripts.js' ),
-		array( 'jquery', 'jquery-ui-tabs', 'wpcf7-admin-taggenerator' ),
+		array( 'jquery', 'jquery-ui-tabs' ),
 		WPCF7_VERSION, true );
-
-	$current_screen = get_current_screen();
 
 	wp_localize_script( 'wpcf7-admin', '_wpcf7', array(
 		'pluginUrl' => wpcf7_plugin_url(),
 		'saveAlert' => __( "The changes you made will be lost if you navigate away from this page.", 'contact-form-7' ),
 		'activeTab' => isset( $_GET['active-tab'] ) ? (int) $_GET['active-tab'] : 0 ) );
+
+	add_thickbox();
+
+	wp_enqueue_script( 'wpcf7-admin-taggenerator',
+		wpcf7_plugin_url( 'admin/js/tag-generator.js' ),
+		array( 'jquery', 'thickbox', 'wpcf7-admin' ), WPCF7_VERSION, true );
 }
 
 function wpcf7_admin_management_page() {
@@ -297,9 +298,21 @@ function wpcf7_admin_add_new_page() {
 }
 
 function wpcf7_load_integration_page() {
+	$integration = WPCF7_Integration::get_instance();
+
+	if ( isset( $_REQUEST['service'] )
+	&& $integration->service_exists( $_REQUEST['service'] ) ) {
+		$service = $integration->get_service( $_REQUEST['service'] );
+		$service->load( wpcf7_current_action() );
+	}
+
+	$help_tabs = new WPCF7_Help_Tabs( get_current_screen() );
+	$help_tabs->set_help_tabs( 'integration' );
 }
 
 function wpcf7_admin_integration_page() {
+	$integration = WPCF7_Integration::get_instance();
+
 ?>
 <div class="wrap">
 
@@ -307,7 +320,16 @@ function wpcf7_admin_integration_page() {
 
 <?php do_action( 'wpcf7_admin_notices' ); ?>
 
-<?php do_action( 'wpcf7_admin_integration_page' ); ?>
+<?php
+	if ( isset( $_REQUEST['service'] )
+	&& $service = $integration->get_service( $_REQUEST['service'] ) ) {
+		$message = isset( $_REQUEST['message'] ) ? $_REQUEST['message'] : '';
+		$service->admin_notice( $message );
+		$integration->list_services( array( 'include' => $_REQUEST['service'] ) );
+	} else {
+		$integration->list_services();
+	}
+?>
 
 </div>
 <?php
@@ -318,22 +340,21 @@ function wpcf7_admin_integration_page() {
 add_action( 'wpcf7_admin_notices', 'wpcf7_admin_updated_message' );
 
 function wpcf7_admin_updated_message() {
-	if ( empty( $_REQUEST['message'] ) )
+	if ( empty( $_REQUEST['message'] ) ) {
 		return;
+	}
 
-	if ( 'created' == $_REQUEST['message'] )
-		$updated_message = esc_html( __( 'Contact form created.', 'contact-form-7' ) );
-	elseif ( 'saved' == $_REQUEST['message'] )
-		$updated_message = esc_html( __( 'Contact form saved.', 'contact-form-7' ) );
-	elseif ( 'deleted' == $_REQUEST['message'] )
-		$updated_message = esc_html( __( 'Contact form deleted.', 'contact-form-7' ) );
+	if ( 'created' == $_REQUEST['message'] ) {
+		$updated_message = __( 'Contact form created.', 'contact-form-7' );
+	} elseif ( 'saved' == $_REQUEST['message'] ) {
+		$updated_message = __( 'Contact form saved.', 'contact-form-7' );
+	} elseif ( 'deleted' == $_REQUEST['message'] ) {
+		$updated_message = __( 'Contact form deleted.', 'contact-form-7' );
+	}
 
-	if ( empty( $updated_message ) )
-		return;
-
-?>
-<div id="message" class="updated"><p><?php echo $updated_message; ?></p></div>
-<?php
+	if ( ! empty( $updated_message ) ) {
+		echo sprintf( '<div id="message" class="updated notice notice-success is-dismissible"><p>%s</p></div>', esc_html( $updated_message ) );
+	}
 }
 
 add_filter( 'plugin_action_links', 'wpcf7_plugin_action_links', 10, 2 );
@@ -350,28 +371,23 @@ function wpcf7_plugin_action_links( $links, $file ) {
 	return $links;
 }
 
-add_action( 'admin_notices', 'wpcf7_old_wp_version_error', 9 );
+add_action( 'wpcf7_admin_notices', 'wpcf7_old_wp_version_error', 2 );
 
 function wpcf7_old_wp_version_error() {
-	global $plugin_page;
+	$wp_version = get_bloginfo( 'version' );
 
-	if ( 'wpcf7' != substr( $plugin_page, 0, 5 ) ) {
+	if ( ! version_compare( $wp_version, WPCF7_REQUIRED_WP_VERSION, '<' ) ) {
 		return;
 	}
 
-	$wp_version = get_bloginfo( 'version' );
-
-	if ( ! version_compare( $wp_version, WPCF7_REQUIRED_WP_VERSION, '<' ) )
-		return;
-
 ?>
-<div class="error">
+<div class="notice notice-error is-dismissible">
 <p><?php echo sprintf( __( '<strong>Contact Form 7 %1$s requires WordPress %2$s or higher.</strong> Please <a href="%3$s">update WordPress</a> first.', 'contact-form-7' ), WPCF7_VERSION, WPCF7_REQUIRED_WP_VERSION, admin_url( 'update-core.php' ) ); ?></p>
 </div>
 <?php
 }
 
-add_action( 'wpcf7_admin_notices', 'wpcf7_welcome_panel', 2 );
+add_action( 'wpcf7_admin_notices', 'wpcf7_welcome_panel', 4 );
 
 function wpcf7_welcome_panel() {
 	global $plugin_page;
@@ -466,6 +482,7 @@ function wpcf7_not_allowed_to_edit() {
 	$message = __( "You are not allowed to edit this contact form.",
 		'contact-form-7' );
 
-	echo sprintf( '<div class="notice notice-warning"><p>%s</p></div>',
+	echo sprintf(
+		'<div class="notice notice-warning is-dismissible"><p>%s</p></div>',
 		esc_html( $message ) );
 }

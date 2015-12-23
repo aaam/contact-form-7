@@ -300,8 +300,7 @@ function wpcf7_load_modules() {
 		'acceptance', 'flamingo',
 		'akismet', 'jetpack', 'submit', 'captcha', 'number',
 		'text', 'checkbox', 'quiz', 'textarea', 'date',
-		'response', 'file', 'select', 'listo', 'count',
-		'getscorecard' );
+		'response', 'file', 'select', 'listo', 'count' );
 
 	foreach ( $mods as $mod ) {
 		$file = trailingslashit( $dir ) . $mod . '.php';
@@ -475,4 +474,9 @@ function wpcf7_count_code_units( $string ) {
 	$byte_count = mb_strlen( $string, '8bit' );
 
 	return floor( $byte_count / 2 );
+}
+
+function wpcf7_is_localhost() {
+	$server_name = strtolower( $_SERVER['SERVER_NAME'] );
+	return in_array( $server_name, array( 'localhost', '127.0.0.1' ) );
 }
